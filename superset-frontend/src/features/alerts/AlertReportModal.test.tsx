@@ -656,11 +656,12 @@ test('renders all Alert Condition fields', async () => {
   const database = screen.getByRole('combobox', { name: /database/i });
   const sql = screen.getByRole('textbox');
   const condition = screen.getByRole('combobox', { name: /condition/i });
-  const threshold = screen.getByRole('spinbutton');
+  const [threshold, consecutiveRuns] = screen.getAllByRole('spinbutton');
   expect(database).toBeInTheDocument();
   expect(sql).toBeInTheDocument();
   expect(condition).toBeInTheDocument();
   expect(threshold).toBeInTheDocument();
+  expect(consecutiveRuns).toHaveValue('1');
   // Guard against a double border: passing type="number" leaks onto the inner
   // input and matches the StyledInputContainer input[type='number'] border rule.
   expect(threshold).not.toHaveAttribute('type', 'number');
@@ -672,7 +673,7 @@ test('disables condition threshold if not null condition is selected', async () 
   await userEvent.click(screen.getByTestId('alert-condition-panel'));
   await screen.findByText(/smaller than/i);
   const condition = screen.getByRole('combobox', { name: /condition/i });
-  const spinButton = screen.getByRole('spinbutton');
+  const [spinButton] = screen.getAllByRole('spinbutton');
   expect(spinButton).toHaveValue('10');
   await comboboxSelect(
     condition,
@@ -681,6 +682,7 @@ test('disables condition threshold if not null condition is selected', async () 
   );
   expect(spinButton).toHaveValue('');
   expect(spinButton).toBeDisabled();
+  expect(screen.getAllByRole('spinbutton')).toHaveLength(1);
 });
 
 // Content Section
@@ -1668,7 +1670,7 @@ test('submit includes conditionNotNull without threshold in alert payload', asyn
   // Wait for the threshold input to become disabled after "not null" selection —
   // in CI the state update from comboboxSelect can lag behind the DOM assertion.
   await waitFor(() => {
-    expect(screen.getByRole('spinbutton')).toBeDisabled();
+    expect(screen.getAllByRole('spinbutton')[0]).toBeDisabled();
   });
 
   // Wait for Save to be enabled and click

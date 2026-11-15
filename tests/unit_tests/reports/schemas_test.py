@@ -24,6 +24,7 @@ from superset.reports.schemas import (
     ReportSchedulePostSchema,
     ReportSchedulePutSchema,
     ReportScheduleSubscribeSchema,
+    ValidatorConfigJSONSchema,
 )
 
 
@@ -74,6 +75,27 @@ def test_alert_retry_schema(
         assert result["retry_max_attempts"] == 3
     else:
         assert not result.get("retry_on_failure", False)
+
+
+@pytest.mark.parametrize("consecutive_checks", [1, 100])
+def test_validator_config_accepts_consecutive_checks(
+    consecutive_checks: int,
+) -> None:
+    result = ValidatorConfigJSONSchema().load(
+        {"op": ">", "threshold": 10, "consecutive_checks": consecutive_checks}
+    )
+
+    assert result["consecutive_checks"] == consecutive_checks
+
+
+@pytest.mark.parametrize("consecutive_checks", [0, 101])
+def test_validator_config_rejects_out_of_range_consecutive_checks(
+    consecutive_checks: int,
+) -> None:
+    with pytest.raises(ValidationError):
+        ValidatorConfigJSONSchema().load(
+            {"op": ">", "threshold": 10, "consecutive_checks": consecutive_checks}
+        )
 
 
 def test_report_post_schema_custom_width_validation(mocker: MockerFixture) -> None:

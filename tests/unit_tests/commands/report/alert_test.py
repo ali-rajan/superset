@@ -15,6 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
+from types import SimpleNamespace
 from uuid import uuid4
 
 import numpy as np
@@ -355,6 +356,104 @@ def test_value_handling_with_null_and_nan(
     assert triggered is False
     assert message == expected_message
     assert command._result is None
+
+
+@pytest.mark.parametrize(
+    "previous_values,expected",
+    [
+        ([12.0, 11.0], True),
+        ([12.0, 9.0], False),
+        ([12.0], False),
+        ([12.0, None], False),
+    ],
+)
+def test_operator_validator_requires_consecutive_matching_results(
+    mocker: MockerFixture,
+    previous_values: list[float | None],
+    expected: bool,
+) -> None:
+    mocker.patch(
+        "superset.commands.report.alert.retry_call",
+        side_effect=lambda func, *args, **kwargs: func(*args, **kwargs),
+    )
+    mocker.patch(
+        "superset.commands.report.alert.AlertCommand._execute_query",
+        return_value=pd.DataFrame({"value": [13]}),
+    )
+    find_results = mocker.patch(
+        "superset.commands.report.alert.ReportScheduleDAO.find_recent_alert_results",
+        return_value=[SimpleNamespace(value=value) for value in previous_values],
+    )
+
+    report_schedule_mock = mocker.Mock()
+    report_schedule_mock.validator_type = ReportScheduleValidatorType.OPERATOR
+    report_schedule_mock.validator_config_json = (
+        '{"op": ">", "threshold": 10, "consecutive_checks": 3}'
+    )
+    report_schedule_mock.id = 1
+
+    triggered, message = AlertCommand(
+        report_schedule=report_schedule_mock,
+        execution_id=uuid4(),
+    ).run()
+
+    assert triggered is expected
+    assert message is None
+    find_results.assert_called_once_with(report_schedule_mock, limit=2)
+
+
+def test_operator_validator_does_not_query_history_for_single_check(
+    mocker: MockerFixture,
+) -> None:
+    mocker.patch(
+        "superset.commands.report.alert.retry_call",
+        side_effect=lambda func, *args, **kwargs: func(*args, **kwargs),
+    )
+    mocker.patch(
+        "superset.commands.report.alert.AlertCommand._execute_query",
+        return_value=pd.DataFrame({"value": [13]}),
+    )
+    find_results = mocker.patch(
+        "superset.commands.report.alert.ReportScheduleDAO.find_recent_alert_results"
+    )
+    report_schedule_mock = mocker.Mock(
+        validator_type=ReportScheduleValidatorType.OPERATOR,
+        validator_config_json='{"op": ">", "threshold": 10}',
+        id=1,
+    )
+
+    triggered, _ = AlertCommand(report_schedule_mock, uuid4()).run()
+
+    assert triggered is True
+    find_results.assert_not_called()
+
+
+def test_operator_validator_does_not_query_history_when_current_check_fails(
+    mocker: MockerFixture,
+) -> None:
+    mocker.patch(
+        "superset.commands.report.alert.retry_call",
+        side_effect=lambda func, *args, **kwargs: func(*args, **kwargs),
+    )
+    mocker.patch(
+        "superset.commands.report.alert.AlertCommand._execute_query",
+        return_value=pd.DataFrame({"value": [9]}),
+    )
+    find_results = mocker.patch(
+        "superset.commands.report.alert.ReportScheduleDAO.find_recent_alert_results"
+    )
+    report_schedule_mock = mocker.Mock(
+        validator_type=ReportScheduleValidatorType.OPERATOR,
+        validator_config_json=(
+            '{"op": ">", "threshold": 10, "consecutive_checks": 3}'
+        ),
+        id=1,
+    )
+
+    triggered, _ = AlertCommand(report_schedule_mock, uuid4()).run()
+
+    assert triggered is False
+    find_results.assert_not_called()
 
 
 def test_not_null_validator_with_valid_value_triggers_alert(
