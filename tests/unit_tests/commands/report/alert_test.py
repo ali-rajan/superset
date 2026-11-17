@@ -402,6 +402,167 @@ def test_operator_validator_requires_consecutive_matching_results(
     find_results.assert_called_once_with(report_schedule_mock, limit=2)
 
 
+@pytest.mark.parametrize(
+    "current_value,previous_values,direction,threshold,expected",
+    [
+        (120.0, [100.0], "increase", 20, True),
+        (115.0, [100.0], "increase", 20, False),
+        (75.0, [100.0], "decrease", 20, True),
+        (90.0, [100.0], "decrease", 20, False),
+        (-60.0, [-100.0], "increase", 40, True),
+    ],
+)
+def test_percent_change_validator_compares_single_run(
+    mocker: MockerFixture,
+    current_value: float,
+    previous_values: list[float],
+    direction: str,
+    threshold: float,
+    expected: bool,
+) -> None:
+    mocker.patch(
+        "superset.commands.report.alert.retry_call",
+        side_effect=lambda func, *args, **kwargs: func(*args, **kwargs),
+    )
+    mocker.patch(
+        "superset.commands.report.alert.AlertCommand._execute_query",
+        return_value=pd.DataFrame({"value": [current_value]}),
+    )
+    find_results = mocker.patch(
+        "superset.commands.report.alert.ReportScheduleDAO.find_recent_alert_results",
+        return_value=[SimpleNamespace(value=value) for value in previous_values],
+    )
+
+    report_schedule_mock = mocker.Mock(
+        validator_type=ReportScheduleValidatorType.OPERATOR,
+        validator_config_json=(
+            '{"op": ">=", "threshold": '
+            f'{threshold}, "mode": "percent_change", '
+            f'"direction": "{direction}", "consecutive_checks": 1'
+            "}"
+        ),
+        id=1,
+    )
+
+    result = AlertCommand(report_schedule_mock, uuid4()).run()
+
+    assert result == (expected, None)
+    find_results.assert_called_once_with(report_schedule_mock, limit=1)
+
+
+@pytest.mark.parametrize(
+    "previous_values,expected",
+    [([85.0, 100.0], True), ([95.0, 100.0], False)],
+)
+def test_percent_change_validator_requires_consecutive_matching_changes(
+    mocker: MockerFixture,
+    previous_values: list[float],
+    expected: bool,
+) -> None:
+    mocker.patch(
+        "superset.commands.report.alert.retry_call",
+        side_effect=lambda func, *args, **kwargs: func(*args, **kwargs),
+    )
+    mocker.patch(
+        "superset.commands.report.alert.AlertCommand._execute_query",
+        return_value=pd.DataFrame({"value": [72.0]}),
+    )
+    find_results = mocker.patch(
+        "superset.commands.report.alert.ReportScheduleDAO.find_recent_alert_results",
+        return_value=[SimpleNamespace(value=value) for value in previous_values],
+    )
+
+    report_schedule_mock = mocker.Mock(
+        validator_type=ReportScheduleValidatorType.OPERATOR,
+        validator_config_json=(
+            '{"op": ">", "threshold": 10, "mode": "percent_change", '
+            '"direction": "decrease", "consecutive_checks": 2}'
+        ),
+        id=1,
+    )
+
+    result = AlertCommand(report_schedule_mock, uuid4()).run()
+
+    assert result == (expected, None)
+    find_results.assert_called_once_with(report_schedule_mock, limit=2)
+
+
+@pytest.mark.parametrize(
+    "consecutive_checks,previous_values,expected_message",
+    [
+        (1, [], "Not enough previous runs for percent change comparison"),
+        (2, [85.0], "Not enough previous runs for percent change comparison"),
+        (1, [None], "Not enough previous runs for percent change comparison"),
+        (1, [0.0], "Percent change undefined: previous value is 0"),
+    ],
+)
+def test_percent_change_validator_handles_insufficient_and_zero_history(
+    mocker: MockerFixture,
+    consecutive_checks: int,
+    previous_values: list[float | None],
+    expected_message: str,
+) -> None:
+    mocker.patch(
+        "superset.commands.report.alert.retry_call",
+        side_effect=lambda func, *args, **kwargs: func(*args, **kwargs),
+    )
+    mocker.patch(
+        "superset.commands.report.alert.AlertCommand._execute_query",
+        return_value=pd.DataFrame({"value": [120.0]}),
+    )
+    find_results = mocker.patch(
+        "superset.commands.report.alert.ReportScheduleDAO.find_recent_alert_results",
+        return_value=[SimpleNamespace(value=value) for value in previous_values],
+    )
+
+    report_schedule_mock = mocker.Mock(
+        validator_type=ReportScheduleValidatorType.OPERATOR,
+        validator_config_json=(
+            '{"op": ">=", "threshold": 20, "mode": "percent_change", '
+            f'"direction": "increase", "consecutive_checks": {consecutive_checks}'
+            "}"
+        ),
+        id=1,
+    )
+
+    result = AlertCommand(report_schedule_mock, uuid4()).run()
+
+    assert result == (False, expected_message)
+    find_results.assert_called_once_with(
+        report_schedule_mock, limit=consecutive_checks
+    )
+
+
+def test_percent_change_validator_skips_history_for_null_current_value(
+    mocker: MockerFixture,
+) -> None:
+    mocker.patch(
+        "superset.commands.report.alert.retry_call",
+        side_effect=lambda func, *args, **kwargs: func(*args, **kwargs),
+    )
+    mocker.patch(
+        "superset.commands.report.alert.AlertCommand._execute_query",
+        return_value=pd.DataFrame({"value": [None]}),
+    )
+    find_results = mocker.patch(
+        "superset.commands.report.alert.ReportScheduleDAO.find_recent_alert_results"
+    )
+
+    report_schedule_mock = mocker.Mock(
+        validator_type=ReportScheduleValidatorType.OPERATOR,
+        validator_config_json=(
+            '{"op": ">=", "threshold": 20, "mode": "percent_change", '
+            '"direction": "increase", "consecutive_checks": 1}'
+        ),
+        id=1,
+    )
+
+    result = AlertCommand(report_schedule_mock, uuid4()).run()
+
+    assert result == (False, None)
+    find_results.assert_not_called()
+
+
 def test_operator_validator_does_not_query_history_for_single_check(
     mocker: MockerFixture,
 ) -> None:

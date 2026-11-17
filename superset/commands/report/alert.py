@@ -116,7 +116,10 @@ class AlertCommand(BaseCommand):
                     self._execution_id,
                     self._info_message,
                 )
-                return (False, self._info_message)
+                return (
+                    False,
+                    None if mode == "percent_change" else self._info_message,
+                )
             consecutive_checks = config.get("consecutive_checks", 1)
             if mode == "percent_change":
                 return self._compare_with_history(

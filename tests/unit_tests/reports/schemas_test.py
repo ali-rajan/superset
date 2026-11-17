@@ -88,6 +88,78 @@ def test_validator_config_accepts_consecutive_checks(
     assert result["consecutive_checks"] == consecutive_checks
 
 
+def test_validator_config_defaults_mode_to_fixed_and_allows_omitted_direction() -> None:
+    result = ValidatorConfigJSONSchema().load({"op": ">", "threshold": 10})
+
+    assert result["mode"] == "fixed"
+    assert "direction" not in result
+
+
+@pytest.mark.parametrize("direction", ["increase", "decrease"])
+def test_validator_config_accepts_percent_change(
+    direction: str,
+) -> None:
+    result = ValidatorConfigJSONSchema().load(
+        {
+            "op": ">",
+            "threshold": 10,
+            "mode": "percent_change",
+            "direction": direction,
+            "consecutive_checks": 2,
+        }
+    )
+
+    assert result["mode"] == "percent_change"
+    assert result["direction"] == direction
+    assert result["consecutive_checks"] == 2
+
+
+def test_validator_config_rejects_invalid_mode() -> None:
+    with pytest.raises(ValidationError):
+        ValidatorConfigJSONSchema().load(
+            {"op": ">", "threshold": 10, "mode": "invalid"}
+        )
+
+
+def test_validator_config_rejects_invalid_percent_change_direction() -> None:
+    with pytest.raises(ValidationError):
+        ValidatorConfigJSONSchema().load(
+            {
+                "op": ">",
+                "threshold": 10,
+                "mode": "percent_change",
+                "direction": "sideways",
+            }
+        )
+
+
+@pytest.mark.parametrize(
+    "config",
+    [
+        pytest.param(
+            {"op": ">", "threshold": 10, "mode": "percent_change"},
+            id="missing",
+        ),
+        pytest.param(
+            {
+                "op": ">",
+                "threshold": 10,
+                "mode": "percent_change",
+                "direction": None,
+            },
+            id="null",
+        ),
+    ],
+)
+def test_validator_config_requires_direction_for_percent_change(
+    config: dict[str, object],
+) -> None:
+    with pytest.raises(ValidationError) as exc_info:
+        ValidatorConfigJSONSchema().load(config)
+
+    assert "direction" in exc_info.value.messages
+
+
 @pytest.mark.parametrize("consecutive_checks", [0, 101])
 def test_validator_config_rejects_out_of_range_consecutive_checks(
     consecutive_checks: int,
