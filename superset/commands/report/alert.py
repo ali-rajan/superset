@@ -105,6 +105,8 @@ class AlertCommand(BaseCommand):
             config = json.loads(self._report_schedule.validator_config_json)
             operator = config["op"]
             threshold = config["threshold"]
+            mode = config.get("mode", "fixed")
+            direction = config.get("direction")
             # Return False for None results to prevent false alert triggers
             if self._result is None:
                 logger.debug(
@@ -116,6 +118,10 @@ class AlertCommand(BaseCommand):
                 )
                 return (False, self._info_message)
             consecutive_checks = config.get("consecutive_checks", 1)
+            if mode == "percent_change":
+                return self._compare_with_history(
+                    operator, threshold, direction, consecutive_checks
+                )
             if not self._condition_is_met(self._result, operator, threshold):
                 return (False, None)
             results = [self._result]
@@ -132,6 +138,36 @@ class AlertCommand(BaseCommand):
             return (triggered, None)
         except (KeyError, json.JSONDecodeError) as ex:
             raise AlertValidatorConfigError() from ex
+
+    def _compare_with_history(
+        self,
+        operator: str,
+        threshold: float,
+        direction: str | None,
+        consecutive_checks: int,
+    ) -> tuple[bool, str | None]:
+        previous_logs = ReportScheduleDAO.find_recent_alert_results(
+            self._report_schedule,
+            limit=consecutive_checks,
+        )
+        values = [self._result] + [log.value for log in previous_logs]
+        if len(values) < consecutive_checks + 1 or any(
+            value is None for value in values
+        ):
+            return (False, "Not enough previous runs for percent change comparison")
+
+        for index in range(consecutive_checks):
+            current = values[index]
+            previous = values[index + 1]
+            if previous == 0:
+                return (False, "Percent change undefined: previous value is 0")
+            pct_change = ((current - previous) / abs(previous)) * 100
+            if direction == "decrease":
+                pct_change = -pct_change
+            if not self._condition_is_met(pct_change, operator, threshold):
+                return (False, None)
+
+        return (True, None)
 
     @staticmethod
     def _condition_is_met(
