@@ -181,6 +181,16 @@ class ValidatorConfigJSONSchema(Schema):
         validate=validate.OneOf(choices=["<", "<=", ">", ">=", "==", "!="]),
     )
     threshold = fields.Float()
+    mode = fields.String(
+        required=False,
+        load_default="fixed",
+        validate=validate.OneOf(choices=["fixed", "percent_change"]),
+    )
+    direction = fields.String(
+        required=False,
+        allow_none=True,
+        validate=validate.OneOf(choices=["increase", "decrease"]),
+    )
     consecutive_checks = fields.Integer(
         required=False,
         validate=Range(
@@ -189,6 +199,17 @@ class ValidatorConfigJSONSchema(Schema):
             error=_("Consecutive checks must be between 1 and 100"),
         ),
     )
+
+    @validates_schema
+    def validate_percent_change_direction(
+        self,
+        data: dict[str, Any],
+        **kwargs: Any,
+    ) -> None:
+        if data.get("mode") == "percent_change" and not data.get("direction"):
+            raise ValidationError(
+                {"direction": [_("Direction is required when mode is percent_change")]}
+            )
 
 
 EMAIL_REGEX = re.compile(r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$")

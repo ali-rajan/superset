@@ -819,7 +819,7 @@ const AlertReportModal: FunctionComponent<AlertReportModalProps> = ({
     recipients: [],
     sql: '',
     email_subject: '',
-    validator_config_json: {},
+    validator_config_json: { mode: 'fixed', consecutive_checks: 1 },
     validator_type: '',
     force_screenshot: false,
     include_cta: true,
@@ -1732,12 +1732,14 @@ const AlertReportModal: FunctionComponent<AlertReportModalProps> = ({
     setConditionNotNull(op === 'not null');
 
     const config = {
+      ...currentAlert?.validator_config_json,
       op,
       threshold: currentAlert
         ? currentAlert.validator_config_json?.threshold
         : undefined,
       consecutive_checks:
         currentAlert?.validator_config_json?.consecutive_checks ?? 1,
+      mode: currentAlert?.validator_config_json?.mode ?? 'fixed',
     };
 
     updateAlertState('validator_config_json', config);
@@ -1745,10 +1747,12 @@ const AlertReportModal: FunctionComponent<AlertReportModalProps> = ({
 
   const onThresholdChange = (value: number | null) => {
     const config = {
+      ...currentAlert?.validator_config_json,
       op: currentAlert ? currentAlert.validator_config_json?.op : undefined,
       threshold: value,
       consecutive_checks:
         currentAlert?.validator_config_json?.consecutive_checks ?? 1,
+      mode: currentAlert?.validator_config_json?.mode ?? 'fixed',
     };
 
     updateAlertState('validator_config_json', config);
@@ -1758,6 +1762,25 @@ const AlertReportModal: FunctionComponent<AlertReportModalProps> = ({
     updateAlertState('validator_config_json', {
       ...currentAlert?.validator_config_json,
       consecutive_checks: value ?? 1,
+    });
+  };
+
+  const onModeChange = (value: 'fixed' | 'percent_change') => {
+    updateAlertState('validator_config_json', {
+      ...currentAlert?.validator_config_json,
+      mode: value,
+      direction:
+        value === 'fixed'
+          ? undefined
+          : currentAlert?.validator_config_json?.direction,
+    });
+  };
+
+  const onDirectionChange = (value: 'increase' | 'decrease') => {
+    updateAlertState('validator_config_json', {
+      ...currentAlert?.validator_config_json,
+      mode: currentAlert?.validator_config_json?.mode ?? 'fixed',
+      direction: value,
     });
   };
 
@@ -2150,6 +2173,7 @@ const AlertReportModal: FunctionComponent<AlertReportModalProps> = ({
   };
   const validateAlertSection = () => {
     const errors = [];
+    const validatorConfig = currentAlert?.validator_config_json;
     if (!currentAlert?.database) {
       errors.push(TRANSLATIONS.DATABASE_ERROR_TEXT);
     }
@@ -2158,9 +2182,11 @@ const AlertReportModal: FunctionComponent<AlertReportModalProps> = ({
     }
     if (
       !(
-        (conditionNotNull || !!currentAlert?.validator_config_json?.op) &&
-        (conditionNotNull ||
-          currentAlert?.validator_config_json?.threshold !== undefined)
+        conditionNotNull ||
+        (!!validatorConfig?.op &&
+          validatorConfig.threshold !== undefined &&
+          (validatorConfig.mode !== 'percent_change' ||
+            !!validatorConfig.direction))
       )
     ) {
       errors.push(TRANSLATIONS.ALERT_CONDITION_ERROR_TEXT);
@@ -2362,7 +2388,10 @@ const AlertReportModal: FunctionComponent<AlertReportModalProps> = ({
             ? {
                 op: 'not null',
               }
-            : validatorConfig,
+            : {
+                ...validatorConfig,
+                mode: validatorConfig?.mode ?? 'fixed',
+              },
       });
     }
   }, [resource]);
@@ -2711,10 +2740,65 @@ const AlertReportModal: FunctionComponent<AlertReportModalProps> = ({
                           {!conditionNotNull && (
                             <StyledInputContainer css={noMarginBottom}>
                               <div className="control-label">
+                                {t('Compare against')}
+                              </div>
+                              <div className="input-container">
+                                <Select
+                                  ariaLabel={t('Compare against')}
+                                  value={
+                                    currentAlert?.validator_config_json?.mode ??
+                                    'fixed'
+                                  }
+                                  options={[
+                                    { value: 'fixed', label: t('Fixed value') },
+                                    {
+                                      value: 'percent_change',
+                                      label: t('Percent change'),
+                                    },
+                                  ]}
+                                  onChange={onModeChange}
+                                />
+                              </div>
+                            </StyledInputContainer>
+                          )}
+                          {!conditionNotNull &&
+                            currentAlert?.validator_config_json?.mode ===
+                              'percent_change' && (
+                              <StyledInputContainer css={noMarginBottom}>
+                                <div className="control-label">
+                                  {t('Direction')}
+                                  <span className="required">*</span>
+                                </div>
+                                <div className="input-container">
+                                  <Select
+                                    ariaLabel={t('Direction')}
+                                    placeholder={t('Direction')}
+                                    value={
+                                      currentAlert.validator_config_json
+                                        .direction
+                                    }
+                                    options={[
+                                      {
+                                        value: 'increase',
+                                        label: t('Increase'),
+                                      },
+                                      {
+                                        value: 'decrease',
+                                        label: t('Decrease'),
+                                      },
+                                    ]}
+                                    onChange={onDirectionChange}
+                                  />
+                                </div>
+                              </StyledInputContainer>
+                            )}
+                          {!conditionNotNull && (
+                            <StyledInputContainer css={noMarginBottom}>
+                              <div className="control-label">
                                 {t('Consecutive runs')}
                                 <InfoTooltip
                                   tooltip={t(
-                                    'Trigger only when the numeric comparison is met for this many runs in a row.',
+                                    'Trigger only when the comparison is met for this many runs in a row.',
                                   )}
                                 />
                               </div>
