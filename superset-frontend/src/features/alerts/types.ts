@@ -165,6 +165,8 @@ export type AlertObject = {
     op?: Operator;
     threshold?: number;
     consecutive_checks?: number;
+    mode?: 'fixed' | 'percent_change';
+    direction?: 'increase' | 'decrease';
   };
   validator_type?: string;
   working_timeout?: number;

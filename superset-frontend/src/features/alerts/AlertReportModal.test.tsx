@@ -338,6 +338,7 @@ afterEach(() => {
   // Remove test-specific named routes (try/catch — may not exist)
   for (const name of [
     'put-condition',
+    'put-percent-change',
     'put-edit',
     'put-extra-dashboard',
     'create-post',
@@ -666,6 +667,79 @@ test('renders all Alert Condition fields', async () => {
   // input and matches the StyledInputContainer input[type='number'] border rule.
   expect(threshold).not.toHaveAttribute('type', 'number');
 });
+
+test('compare against defaults to Fixed value without a direction field', async () => {
+  render(<AlertReportModal {...generateMockedProps(false, true, false)} />, {
+    useRedux: true,
+  });
+  await userEvent.click(screen.getByTestId('alert-condition-panel'));
+
+  expect(
+    screen.getByRole('combobox', { name: /compare against/i }),
+  ).toBeInTheDocument();
+  expect(
+    document.querySelector(selectedValueSelector('Fixed value')),
+  ).toBeInTheDocument();
+  expect(
+    screen.queryByRole('combobox', { name: /direction/i }),
+  ).not.toBeInTheDocument();
+});
+
+test('percent change shows direction choices and Fixed value hides them', async () => {
+  render(<AlertReportModal {...generateMockedProps(false, true, false)} />, {
+    useRedux: true,
+  });
+  await userEvent.click(screen.getByTestId('alert-condition-panel'));
+
+  const compareAgainst = screen.getByRole('combobox', {
+    name: /compare against/i,
+  });
+  await comboboxSelect(compareAgainst, 'Percent change', () =>
+    screen.getByText('Percent change'),
+  );
+
+  const direction = screen.getByRole('combobox', { name: /direction/i });
+  expect(direction).toBeInTheDocument();
+  await userEvent.click(direction);
+  expect(await screen.findByText('Increase')).toBeInTheDocument();
+  expect(await screen.findByText('Decrease')).toBeInTheDocument();
+
+  await comboboxSelect(compareAgainst, 'Fixed value', () =>
+    screen.getAllByText('Fixed value').slice(-1)[0],
+  );
+  expect(
+    screen.queryByRole('combobox', { name: /direction/i }),
+  ).not.toBeInTheDocument();
+});
+
+test('not null hides comparison, direction, and consecutive run controls', async () => {
+  render(<AlertReportModal {...generateMockedProps(false, true, false)} />, {
+    useRedux: true,
+  });
+  await userEvent.click(screen.getByTestId('alert-condition-panel'));
+
+  await comboboxSelect(
+    screen.getByRole('combobox', { name: /compare against/i }),
+    'Percent change',
+    () => screen.getByText('Percent change'),
+  );
+  expect(screen.getByRole('combobox', { name: /direction/i })).toBeInTheDocument();
+
+  await comboboxSelect(
+    screen.getByRole('combobox', { name: /condition/i }),
+    'not null',
+    () => screen.getAllByText(/not null/i)[0],
+  );
+
+  expect(
+    screen.queryByRole('combobox', { name: /compare against/i }),
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole('combobox', { name: /direction/i }),
+  ).not.toBeInTheDocument();
+  expect(screen.queryByText(/consecutive runs/i)).not.toBeInTheDocument();
+});
+
 test('disables condition threshold if not null condition is selected', async () => {
   render(<AlertReportModal {...generateMockedProps(false, true, false)} />, {
     useRedux: true,
