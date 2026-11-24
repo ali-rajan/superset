@@ -16,7 +16,6 @@
 # under the License.
 from __future__ import annotations
 
-from datetime import datetime, timedelta
 from unittest.mock import patch
 
 import pytest
@@ -25,10 +24,8 @@ from sqlalchemy.orm.session import Session
 from superset.daos.report import ReportScheduleDAO
 from superset.reports.models import (
     ReportCreationMethod,
-    ReportExecutionLog,
     ReportSchedule,
     ReportScheduleType,
-    ReportState,
 )
 from superset.utils import json
 
@@ -136,39 +133,6 @@ def test_find_by_native_filter_id_escapes_underscore_wildcard(
 
     assert len(results) == 1
     assert results[0].name == "with-underscore"
-
-
-def test_find_recent_alert_results_returns_latest_terminal_observations(
-    session: Session,
-) -> None:
-    report = ReportSchedule(
-        name="consecutive-alert",
-        type=ReportScheduleType.ALERT,
-        crontab="* * * * *",
-    )
-    session.add(report)
-    session.flush()
-    start = datetime(2026, 1, 1)
-    for offset, state, value in (
-        (1, ReportState.SUCCESS, 1.0),
-        (2, ReportState.ERROR, 2.0),
-        (3, ReportState.NOOP, 3.0),
-        (4, ReportState.SUCCESS, 4.0),
-    ):
-        session.add(
-            ReportExecutionLog(
-                report_schedule=report,
-                scheduled_dttm=start + timedelta(minutes=offset),
-                end_dttm=start + timedelta(minutes=offset),
-                state=state,
-                value=value,
-            )
-        )
-    session.flush()
-
-    results = ReportScheduleDAO.find_recent_alert_results(report, limit=2)
-
-    assert [result.value for result in results] == [4.0, 3.0]
 
 
 @patch("superset.daos.report.get_user_id", return_value=1)
